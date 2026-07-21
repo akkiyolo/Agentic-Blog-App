@@ -17,12 +17,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "greenlet" },
     { name = "sqlalchemy" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "greenlet", specifier = ">=3.5.3" },
     { name = "sqlalchemy", specifier = ">=2.0.51" },
 ]
 
