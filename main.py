@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import models
 from database import Base, engine, get_db
-from schemas import PostCreate, PostResponse, UserCreate, UserResponse
+from schemas import PostCreate, PostResponse, UserCreate, UserResponse,PostUpdate
 
 Base.metadata.create_all(bind=engine)
 
@@ -168,6 +168,67 @@ def get_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
     if post:
         return post
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+@app.put("/api/posts/{post_id}", response_model=PostResponse)
+def update_post_full(
+    post_id: int, 
+    post_data:PostCreate, 
+    db: Annotated[Session, Depends(get_db)],
+):
+    result = db.execute(select(models.Post).where(models.Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    if post_data.user_id!=post.user_id:
+        result = db.execute(select(models.User).where(models.User.id == post_data.user_id),
+                            )
+        user = result.scalars().first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+    post.title=post_data.title
+    post.content=post_data.content
+    post.user_id=post_data.user_id
+
+    db.commit()
+    db.refresh(post)
+    return post
+
+@app.patch("/api/posts/{post_id}", response_model=PostResponse)
+def update_post_partial(
+    post_id: int, 
+    post_data:PostUpdate, 
+    db: Annotated[Session, Depends(get_db)],
+):
+    result = db.execute(select(models.Post).where(models.Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    update_data=post_data.model_dump(exclude_unset=True)
+    for field,value in update_data.items():
+        setattr(post,field,value)
+
+
+    db.commit()
+    db.refresh(post)
+    return post
+
+@app.delete("/api/posts/{post_id}",status_code=status.HTTP_204_NO_CONTENT)
+def delete_post(post_id: int, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(models.Post).where(models.Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    db.delete(post)
+    db.commit()
+    
 
 
 @app.exception_handler(StarletteHTTPException)
