@@ -1,4 +1,3 @@
-// Error message extraction from API responses
 export function getErrorMessage(error) {
   if (typeof error.detail === "string") {
     return error.detail;
