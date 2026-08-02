@@ -6,7 +6,7 @@ import httpx
 from sqlalchemy import delete, select, update
 
 import models
-from database import AsyncSessionLocal, engine
+from database import AsyncSessionLocal, engine,Base
 from image_utils import PROFILE_PICS_DIR
 from main import app
 
@@ -14,8 +14,8 @@ POPULATE_IMAGES_DIR = Path("populate_images")
 
 USERS = [
     {
-        "username": "CoreyMSchafer",
-        "email": "CoreyMSchafer@gmail.com",
+        "username": "AkshatShukla",
+        "email": "akshatshukla069@gmail.com",
         "password": "TestPassword1!",
         "image": "corey.png",
     },
@@ -282,6 +282,10 @@ async def update_post_dates() -> None:
 
 
 async def populate() -> None:
+    # Ensure all database tables exist before trying to clear/populate them
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(
@@ -335,7 +339,11 @@ async def populate() -> None:
                     print(f"    Uploaded: {image_name}")
 
             users.append(
-                {"id": user["id"], "username": user["username"], "token": token},
+                {
+                    "id": user["id"],
+                    "username": user["username"],
+                    "token": token,
+                }
             )
 
         print(f"\nCreating {len(POSTS) + 1} posts...")
@@ -343,7 +351,10 @@ async def populate() -> None:
         # First create POST_44 (will become oldest after date update)
         response = await client.post(
             "/api/posts",
-            json={"title": POST_44["title"], "content": POST_44["content"]},
+            json={
+                "title": POST_44["title"],
+                "content": POST_44["content"],
+            },
             headers={"Authorization": f"Bearer {users[0]['token']}"},
         )
         response.raise_for_status()
@@ -352,6 +363,7 @@ async def populate() -> None:
         # Create remaining posts in reverse (last in list = oldest, first = newest)
         for i, post_data in enumerate(reversed(POSTS)):
             user = users[i % len(users)]
+
             response = await client.post(
                 "/api/posts",
                 json={
@@ -361,11 +373,12 @@ async def populate() -> None:
                 headers={"Authorization": f"Bearer {user['token']}"},
             )
             response.raise_for_status()
+
             title = post_data["title"]
             print(
                 f"  Created: '{title[:50]}...'"
                 if len(title) > 50
-                else f"  Created: '{title}'",
+                else f"  Created: '{title}'"
             )
 
         print("\nUpdating post dates...")
@@ -377,7 +390,6 @@ async def populate() -> None:
     print(f"  {len(USERS)} users")
     print(f"  {len(POSTS) + 1} posts")
     print("  Profile pictures saved locally")
-
 
 if __name__ == "__main__":
     asyncio.run(populate())
