@@ -2,6 +2,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import httpx
 from sqlalchemy import delete, select, update
 
