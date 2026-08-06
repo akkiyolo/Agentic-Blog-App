@@ -12,7 +12,6 @@ from sqlalchemy import delete, select, update
 
 import models
 from database import AsyncSessionLocal, engine,Base
-from image_utils import PROFILE_PICS_DIR
 from main import app
 
 POPULATE_IMAGES_DIR = Path("populate_images")
@@ -239,18 +238,17 @@ POST_44 = {
 
 
 async def clear_existing_data() -> None:
-    # Delete profile pictures from local storage
-    if PROFILE_PICS_DIR.exists():
-        for file in PROFILE_PICS_DIR.iterdir():
-            if file.is_file() and file.name != ".gitkeep":
-                file.unlink()
-        print(f"Deleted profile pictures from {PROFILE_PICS_DIR}")
+    """
+    Clear existing database records.
 
-    # Clear database tables (order respects foreign keys)
+    Profile pictures are stored in S3 and uploaded through the API,
+    so there is no local directory to clean anymore.
+    """
     async with AsyncSessionLocal() as db:
         await db.execute(delete(models.Post))
         await db.execute(delete(models.User))
         await db.commit()
+
     print("Cleared existing data")
 
 
@@ -276,6 +274,7 @@ async def update_post_dates() -> None:
             days_ago = (len(posts) - i) * 1.5
             hours_offset = (i * 7) % 24
             post_date = now - timedelta(days=days_ago, hours=hours_offset)
+
             await db.execute(
                 update(models.Post)
                 .where(models.Post.id == post.id)
@@ -283,11 +282,12 @@ async def update_post_dates() -> None:
             )
 
         await db.commit()
+
     print("Updated post dates")
 
 
 async def populate() -> None:
-    # Ensure all database tables exist before trying to clear/populate them
+    # Create database tables if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -297,13 +297,15 @@ async def populate() -> None:
         transport=transport,
         base_url="http://localhost",
     ) as client:
-        # Clear existing data (local images first, then database)
+
         await clear_existing_data()
 
-        users: list[dict] = []
+        users = []
 
         print(f"\nCreating {len(USERS)} users...")
+
         for user_data in USERS:
+            # Create user
             response = await client.post(
                 "/api/users",
                 json={
@@ -313,9 +315,12 @@ async def populate() -> None:
                 },
             )
             response.raise_for_status()
+
             user = response.json()
+
             print(f"  Created: {user['username']}")
 
+            # Login
             response = await client.post(
                 "/api/users/token",
                 data={
@@ -324,10 +329,15 @@ async def populate() -> None:
                 },
             )
             response.raise_for_status()
+
             token = response.json()["access_token"]
 
-            if image_name := user_data.get("image"):
+            # Upload profile picture (API uploads it to S3)
+            image_name = user_data.get("image")
+
+            if image_name:
                 image_path = POPULATE_IMAGES_DIR / image_name
+
                 if image_path.exists():
                     response = await client.patch(
                         f"/api/users/{user['id']}/picture",
@@ -338,10 +348,14 @@ async def populate() -> None:
                                 "image/png",
                             ),
                         },
-                        headers={"Authorization": f"Bearer {token}"},
+                        headers={
+                            "Authorization": f"Bearer {token}"
+                        },
                     )
+
                     response.raise_for_status()
-                    print(f"    Uploaded: {image_name}")
+
+                    print(f"    Uploaded to S3: {image_name}")
 
             users.append(
                 {
@@ -353,19 +367,23 @@ async def populate() -> None:
 
         print(f"\nCreating {len(POSTS) + 1} posts...")
 
-        # First create POST_44 (will become oldest after date update)
+        # Oldest post
         response = await client.post(
             "/api/posts",
             json={
                 "title": POST_44["title"],
                 "content": POST_44["content"],
             },
-            headers={"Authorization": f"Bearer {users[0]['token']}"},
+            headers={
+                "Authorization": f"Bearer {users[0]['token']}"
+            },
         )
+
         response.raise_for_status()
+
         print(f"  Created: '{POST_44['title']}'")
 
-        # Create remaining posts in reverse (last in list = oldest, first = newest)
+        # Remaining posts
         for i, post_data in enumerate(reversed(POSTS)):
             user = users[i % len(users)]
 
@@ -375,16 +393,19 @@ async def populate() -> None:
                     "title": post_data["title"],
                     "content": post_data["content"],
                 },
-                headers={"Authorization": f"Bearer {user['token']}"},
+                headers={
+                    "Authorization": f"Bearer {user['token']}"
+                },
             )
+
             response.raise_for_status()
 
             title = post_data["title"]
-            print(
-                f"  Created: '{title[:50]}...'"
-                if len(title) > 50
-                else f"  Created: '{title}'"
-            )
+
+            if len(title) > 50:
+                print(f"  Created: '{title[:50]}...'")
+            else:
+                print(f"  Created: '{title}'")
 
         print("\nUpdating post dates...")
         await update_post_dates()
@@ -394,7 +415,8 @@ async def populate() -> None:
     print("\nDone!")
     print(f"  {len(USERS)} users")
     print(f"  {len(POSTS) + 1} posts")
-    print("  Profile pictures saved locally")
+    print("  Profile pictures uploaded to S3")
+
 
 if __name__ == "__main__":
     asyncio.run(populate())
