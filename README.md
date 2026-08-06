@@ -159,7 +159,7 @@ Full interactive API documentation is available at `/docs` (Swagger UI) once the
 
 ## License
 
-No license specified yet — consider adding one (e.g., MIT) if you plan to open this up for contributions.
+Licensed under the [Apache License 2.0](LICENSE).
 
 ## Author
 
