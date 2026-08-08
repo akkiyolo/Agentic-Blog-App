@@ -55,6 +55,12 @@ class PostResponse(PostBase):
     date_posted: datetime
     author: UserPublic
 
+    tags: list[str] | None = None
+    summary: str | None = None
+    meta_description: str | None = None
+    tagging_status: str = "pending"
+
+
 
 class PaginatedPostsResponse(BaseModel):
     posts: list[PostResponse]
@@ -76,3 +82,9 @@ class ResetPasswordRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
+
+
+class PostMetadata(BaseModel):
+    tags: list[str] = Field(description="3-6 concise lowercase topical tags")
+    summary: str = Field(description="2-3 sentence summary of the post")
+    meta_description: str = Field(description="SEO meta description, max 155 characters")

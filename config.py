@@ -34,6 +34,8 @@ class Settings(BaseSettings):
 
   frontend_url: str = "http://localhost:8000"
 
+  google_api_key: SecretStr
+
 
 settings=Settings()  # type: ignore[call-arg] ## loaded from .env file
 

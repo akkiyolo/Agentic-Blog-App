@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -57,6 +57,14 @@ class Post(Base):
     )
 
     likes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    # --- Auto-tagging agent fields ---
+    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=None)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    meta_description: Mapped[str | None] = mapped_column(String(160), nullable=True, default=None)
+    tagging_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending",
+    )  # pending | done | failed
 
     author: Mapped[User] = relationship(back_populates="posts")
 
