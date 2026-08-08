@@ -1,7 +1,7 @@
 import pytest 
 from httpx  import AsyncClient
-
-
+from routers.posts import run_tagging
+from unittest.mock import AsyncMock, patch
 from tests.conftest import auth_header,create_test_user,login_user
 
 import sys
@@ -148,5 +148,99 @@ async def test_get_posts_with_pagination(client: AsyncClient):
     assert len(data["posts"]) == 2
     assert data["skip"] == 2
     assert data["limit"] == 2
+
+
+@pytest.mark.anyio
+async def test_new_post_starts_pending(client: AsyncClient):
+    await create_test_user(client)
+    token = await login_user(client)
+
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Agentic Post", "content": "Some content"},
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["tagging_status"] == "pending"
+
+
+@pytest.mark.anyio
+async def test_run_tagging_updates_post(client: AsyncClient, db_session):
+    await create_test_user(client)
+    token = await login_user(client)
+
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Agentic Post", "content": "Some content"},
+        headers=auth_header(token),
+    )
+    post_id = response.json()["id"]
+
+    await run_tagging(post_id, "Agentic Post", "Some content", db=db_session)
+
+    response = await client.get(f"/api/posts/{post_id}")
+    data = response.json()
+    assert data["tagging_status"] == "done"
+    assert data["tags"] == ["test", "mock"]
+    assert data["summary"] == "Mock summary."
+
+
+@pytest.mark.anyio
+async def test_run_tagging_marks_failed_on_llm_error(client: AsyncClient, db_session):
+    await create_test_user(client)
+    token = await login_user(client)
+
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Bad Post", "content": "Content"},
+        headers=auth_header(token),
+    )
+    post_id = response.json()["id"]
+
+    with patch(
+        "agents.tagging_agent._call_llm",
+        new=AsyncMock(side_effect=Exception("boom")),
+    ):
+        await run_tagging(post_id, "Bad Post", "Content", db=db_session)
+
+    response = await client.get(f"/api/posts/{post_id}")
+    assert response.json()["tagging_status"] == "failed"
+
+
+@pytest.mark.anyio
+async def test_retag_requires_ownership(client: AsyncClient):
+    await create_test_user(client, username="user1", email="user1@example.com")
+    token1 = await login_user(client, email="user1@example.com")
+
+    response = await client.post(
+        "/api/posts",
+        json={"title": "User 1's Post", "content": "Content"},
+        headers=auth_header(token1),
+    )
+    post_id = response.json()["id"]
+
+    await create_test_user(client, username="user2", email="user2@example.com")
+    token2 = await login_user(client, email="user2@example.com")
+
+    response = await client.post(
+        f"/api/posts/{post_id}/retag",
+        headers=auth_header(token2),
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_retag_not_found(client: AsyncClient):
+    await create_test_user(client)
+    token = await login_user(client)
+
+    response = await client.post(
+        "/api/posts/999/retag",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 404
 
 

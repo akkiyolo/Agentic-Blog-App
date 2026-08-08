@@ -14,13 +14,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import logging
+
 import models
 from config import settings
-from database import engine, get_db
+from database import engine, get_db,AsyncSessionLocal
 from routers import posts, users
+from routers.posts import run_tagging
+import asyncio
+
+
+async def requeue_stuck_tagging_jobs() -> None:
+    """On startup, re-fire tagging for any post left in pending/failed —
+    covers posts orphaned by a crash or redeploy mid-generation."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(models.Post).where(
+                models.Post.tagging_status.in_(["pending", "failed"]),
+            ),
+        )
+        stuck_posts = result.scalars().all()
+
+    for post in stuck_posts:
+        asyncio.create_task(run_tagging(post.id, post.title, post.content))
+
+    if stuck_posts:
+        logging.getLogger(__name__).info(
+            "Requeued %d posts for auto-tagging", len(stuck_posts),
+        )
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await requeue_stuck_tagging_jobs()
     yield
     # Shutdown
     await engine.dispose()

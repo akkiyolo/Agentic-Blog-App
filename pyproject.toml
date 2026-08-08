@@ -25,3 +25,8 @@ dev = [
     "moto[s3]>=5.2.2",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "no_mock_llm: skip the autouse tagging-LLM mock for this test",
+]

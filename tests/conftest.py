@@ -15,6 +15,8 @@ os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
+os.environ["GOOGLE_API_KEY"] = "test-google-api-key"
+
 import boto3
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -24,6 +26,9 @@ from sqlalchemy.pool import NullPool
 
 from database import Base, get_db
 from main import app
+
+from unittest.mock import AsyncMock, patch
+from schemas import PostMetadata
 
 pytest_plugins=["anyio"]
 
@@ -142,3 +147,29 @@ async def login_user(
 
 def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def mock_tagging_llm(request):
+    """All tests get a mocked tagging LLM by default — no real network
+    calls, deterministic output, no dependency on a real API key.
+    The retry decorator on _call_llm stays live since we only swap out
+    the LLM object, not _call_llm itself.
+
+    Tests that need the real LLM-selection logic (e.g. missing-key
+    behavior) opt out with @pytest.mark.no_mock_llm.
+    """
+    if "no_mock_llm" in request.keywords:
+        yield
+        return
+
+    fake_metadata = PostMetadata(
+        tags=["test", "mock"],
+        summary="Mock summary.",
+        meta_description="Mock meta description.",
+    )
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke = AsyncMock(return_value=fake_metadata)
+
+    with patch("agents.tagging_agent._get_structured_llm", return_value=mock_llm):
+        yield

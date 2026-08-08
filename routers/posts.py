@@ -18,30 +18,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def run_tagging(post_id: int, title: str, content: str) -> None:
-    """Background job: generate tags/summary for a post and persist the result."""
+async def _apply_tagging_result(
+    session: AsyncSession, post_id: int, title: str, content: str,
+) -> None:
+    try:
+        meta = await generate_post_metadata(title, content)
+        await session.execute(
+            update(models.Post)
+            .where(models.Post.id == post_id)
+            .values(
+                tags=meta.tags,
+                summary=meta.summary,
+                meta_description=meta.meta_description,
+                tagging_status="done",
+            ),
+        )
+        await session.commit()
+    except Exception:
+        logger.exception("Auto-tagging failed for post_id=%s", post_id)
+        await session.execute(
+            update(models.Post)
+            .where(models.Post.id == post_id)
+            .values(tagging_status="failed"),
+        )
+        await session.commit()
+
+
+async def run_tagging(
+    post_id: int, title: str, content: str, db: AsyncSession | None = None,
+) -> None:
+    """Generate tags/summary for a post and persist the result.
+
+    If `db` is provided, reuse that session (used by tests / the startup
+    sweep). Otherwise open a fresh session — this is the normal
+    BackgroundTasks path, which must not share the request-scoped session
+    since it outlives the request.
+    """
+    if db is not None:
+        await _apply_tagging_result(db, post_id, title, content)
+        return
     async with AsyncSessionLocal() as session:
-        try:
-            meta = await generate_post_metadata(title, content)
-            await session.execute(
-                update(models.Post)
-                .where(models.Post.id == post_id)
-                .values(
-                    tags=meta.tags,
-                    summary=meta.summary,
-                    meta_description=meta.meta_description,
-                    tagging_status="done",
-                ),
-            )
-            await session.commit()
-        except Exception:
-            logger.exception("Auto-tagging failed for post_id=%s", post_id)
-            await session.execute(
-                update(models.Post)
-                .where(models.Post.id == post_id)
-                .values(tagging_status="failed"),
-            )
-            await session.commit()
+        await _apply_tagging_result(session, post_id, title, content)
 
 
 @router.get("", response_model=PaginatedPostsResponse)

@@ -1,5 +1,5 @@
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings,SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
   model_config=SettingsConfigDict(
@@ -34,8 +34,10 @@ class Settings(BaseSettings):
 
   frontend_url: str = "http://localhost:8000"
 
-  google_api_key: SecretStr
+  # --- Agentic features ---
+  # Optional on purpose: app must still boot / other tests must still pass
+  # even if this isn't configured yet.
+  google_api_key: SecretStr | None = None
 
 
 settings=Settings()  # type: ignore[call-arg] ## loaded from .env file
-
