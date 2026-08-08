@@ -19,7 +19,7 @@ import logging
 import models
 from config import settings
 from database import engine, get_db,AsyncSessionLocal
-from routers import posts, users
+from routers import posts, users, drafts
 from routers.posts import run_tagging
 import asyncio
 
@@ -60,7 +60,7 @@ templates = Jinja2Templates(directory="templates")
 
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
-
+app.include_router(drafts.router, prefix="/api/drafts", tags=["drafts"])
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -212,6 +212,15 @@ async def account_page(request: Request):
         request,
         "account.html",
         {"title": "Account"},
+    )
+
+
+@app.get("/draft-assist", include_in_schema=False)
+async def draft_assist_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "draft_assist.html",
+        {"title": "AI Draft Assist"},
     )
 
 

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
   # Optional on purpose: app must still boot / other tests must still pass
   # even if this isn't configured yet.
   google_api_key: SecretStr | None = None
+  tavily_api_key: SecretStr | None = None
 
 
 settings=Settings()  # type: ignore[call-arg] ## loaded from .env file

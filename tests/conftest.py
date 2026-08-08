@@ -24,6 +24,9 @@ from moto import mock_aws
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from types import SimpleNamespace
+from schemas import PostMetadata, DraftOutput
+
 from database import Base, get_db
 from main import app
 
@@ -172,4 +175,27 @@ def mock_tagging_llm(request):
     mock_llm.ainvoke = AsyncMock(return_value=fake_metadata)
 
     with patch("agents.tagging_agent._get_structured_llm", return_value=mock_llm):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def mock_draft_llm(request):
+    """Mocks the draft-assist agent's outline/draft LLMs — no real Gemini
+    calls in tests. Opt out with @pytest.mark.no_mock_llm.
+    """
+    if "no_mock_llm" in request.keywords:
+        yield
+        return
+
+    mock_outline_llm = AsyncMock()
+    mock_outline_llm.ainvoke = AsyncMock(
+        return_value=SimpleNamespace(content="1. Intro\n2. Body\n3. Conclusion"),
+    )
+
+    fake_draft = DraftOutput(title="Mock Draft Title", content="Mock draft content.")
+    mock_draft_llm_obj = AsyncMock()
+    mock_draft_llm_obj.ainvoke = AsyncMock(return_value=fake_draft)
+
+    with patch("agents.draft_agent._get_outline_llm", return_value=mock_outline_llm), \
+         patch("agents.draft_agent._get_draft_llm", return_value=mock_draft_llm_obj):
         yield

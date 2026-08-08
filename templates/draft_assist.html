@@ -1,0 +1,218 @@
+{% extends "layout.html" %}
+{% block content %}
+    <div class="content-section py-3 px-4 mb-4">
+        <h2 class="mb-3">AI Draft Assist</h2>
+        <p class="text-body-secondary">
+            Give the agent a topic. It'll pull context from your own posts and the web,
+            outline the post, and write a first draft for you to edit before publishing.
+        </p>
+
+        <!-- Step 1: topic input -->
+        <form id="topicForm" class="mb-4">
+            <div class="mb-3">
+                <label for="topicInput" class="form-label">Topic</label>
+                <input type="text"
+                       class="form-control"
+                       id="topicInput"
+                       name="topic"
+                       minlength="3"
+                       maxlength="200"
+                       placeholder="e.g. Debugging async psycopg on Windows"
+                       required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="generateBtn">Generate Draft</button>
+        </form>
+
+        <div id="loadingIndicator" class="d-none text-body-secondary mb-3">
+            Researching and drafting… this can take 15-30 seconds.
+        </div>
+
+        <!-- Step 2: review / edit -->
+        <div id="draftReview" class="d-none">
+            <hr>
+            <h5>Outline</h5>
+            <pre id="outlineDisplay" class="bg-body-tertiary p-3 rounded"></pre>
+
+            <div class="mb-3">
+                <label for="draftTitle" class="form-label">Title</label>
+                <input type="text" class="form-control" id="draftTitle" maxlength="100" required>
+            </div>
+            <div class="mb-3">
+                <label for="draftContent" class="form-label">Content</label>
+                <textarea class="form-control" id="draftContent" rows="14" required></textarea>
+            </div>
+
+            <div id="sourcesDisplay" class="mb-3"></div>
+
+            <!-- Revision -->
+            <div class="mb-3">
+                <label for="feedbackInput" class="form-label">Not quite right? Give feedback and revise</label>
+                <div class="input-group">
+                    <input type="text"
+                           class="form-control"
+                           id="feedbackInput"
+                           placeholder="e.g. make the tone more casual, add a code example">
+                    <button type="button" class="btn btn-outline-secondary" id="reviseBtn">Revise</button>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-success" id="publishBtn">Publish Post</button>
+        </div>
+    </div>
+{% endblock content %}
+
+{% block scripts %}
+<script type="module">
+import { getCurrentUser, getToken } from '/static/js/auth.js';
+import { getErrorMessage, escapeHtml } from '/static/js/utils.js';
+
+let lastOutline = '';
+let lastSources = [];
+const topic = () => document.getElementById('topicInput').value.trim();
+
+async function requireAuth() {
+    const user = await getCurrentUser();
+    if (!user) {
+        window.location.href = '/login';
+    }
+}
+requireAuth();
+
+function setLoading(isLoading) {
+    document.getElementById('loadingIndicator').classList.toggle('d-none', !isLoading);
+    document.getElementById('generateBtn').disabled = isLoading;
+    document.getElementById('reviseBtn').disabled = isLoading;
+}
+
+function renderSources(sources) {
+    lastSources = sources;
+    const container = document.getElementById('sourcesDisplay');
+    if (!sources.length) {
+        container.innerHTML = '';
+        return;
+    }
+    const items = sources.map(s => {
+        if (s.type === 'post') {
+            return `<li><a href="/posts/${s.post_id}">${escapeHtml(s.title)}</a> <span class="badge bg-secondary">your post</span></li>`;
+        }
+        return `<li><a href="${s.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title)}</a> <span class="badge bg-info text-dark">web</span></li>`;
+    }).join('');
+    container.innerHTML = `<h6>Sources used</h6><ul>${items}</ul>`;
+}
+
+function showDraft(data) {
+    lastOutline = data.outline;
+    document.getElementById('outlineDisplay').textContent = data.outline;
+    document.getElementById('draftTitle').value = data.draft_title;
+    document.getElementById('draftContent').value = data.draft_content;
+    renderSources(data.sources);
+    document.getElementById('draftReview').classList.remove('d-none');
+}
+
+document.getElementById('topicForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const token = getToken();
+    if (!token) { window.location.href = '/login'; return; }
+
+    setLoading(true);
+    try {
+        const response = await fetch('/api/drafts/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ topic: topic() }),
+        });
+
+        if (response.status === 401) { window.location.href = '/login'; return; }
+
+        if (response.ok) {
+            showDraft(await response.json());
+        } else {
+            const error = await response.json();
+            alert(getErrorMessage(error));
+        }
+    } catch (error) {
+        alert('Network error. Please check your connection and try again.');
+    } finally {
+        setLoading(false);
+    }
+});
+
+document.getElementById('reviseBtn').addEventListener('click', async () => {
+    const feedback = document.getElementById('feedbackInput').value.trim();
+    if (!feedback) return;
+
+    const token = getToken();
+    if (!token) { window.location.href = '/login'; return; }
+
+    setLoading(true);
+    try {
+        const response = await fetch('/api/drafts/revise', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                topic: topic(),
+                feedback,
+                previous_outline: lastOutline,
+                previous_draft_title: document.getElementById('draftTitle').value,
+                previous_draft_content: document.getElementById('draftContent').value,
+            }),
+        });
+
+        if (response.status === 401) { window.location.href = '/login'; return; }
+
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('draftTitle').value = data.draft_title;
+            document.getElementById('draftContent').value = data.draft_content;
+            document.getElementById('feedbackInput').value = '';
+        } else {
+            const error = await response.json();
+            alert(getErrorMessage(error));
+        }
+    } catch (error) {
+        alert('Network error. Please check your connection and try again.');
+    } finally {
+        setLoading(false);
+    }
+});
+
+document.getElementById('publishBtn').addEventListener('click', async () => {
+    const token = getToken();
+    if (!token) { window.location.href = '/login'; return; }
+
+    const postData = {
+        title: document.getElementById('draftTitle').value,
+        content: document.getElementById('draftContent').value,
+    };
+
+    try {
+        const response = await fetch('/api/posts', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(postData),
+        });
+
+        if (response.status === 401) { window.location.href = '/login'; return; }
+
+        if (response.ok) {
+            const data = await response.json();
+            window.location.href = `/posts/${data.id}`;
+        } else {
+            const error = await response.json();
+            alert(getErrorMessage(error));
+        }
+    } catch (error) {
+        alert('Network error. Please check your connection and try again.');
+    }
+});
+</script>
+{% endblock scripts %}

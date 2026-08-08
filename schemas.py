@@ -88,3 +88,37 @@ class PostMetadata(BaseModel):
     tags: list[str] = Field(description="3-6 concise lowercase topical tags")
     summary: str = Field(description="2-3 sentence summary of the post")
     meta_description: str = Field(description="SEO meta description, max 155 characters")
+
+
+# --- Draft-assist agent schemas ---
+
+class DraftSource(BaseModel):
+    type: str  # "post" | "web"
+    title: str
+    url: str | None = None
+    post_id: int | None = None
+
+
+class DraftGenerateRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=200)
+
+
+class DraftReviseRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=200)
+    feedback: str = Field(min_length=3)
+    previous_outline: str
+    previous_draft_title: str
+    previous_draft_content: str
+
+
+class DraftResponse(BaseModel):
+    outline: str
+    draft_title: str
+    draft_content: str
+    sources: list[DraftSource]
+
+
+# Agent-internal structured LLM output (not an API response)
+class DraftOutput(BaseModel):
+    title: str = Field(description="Compelling blog post title, max 100 characters")
+    content: str = Field(description="Full blog post body in plain prose")
