@@ -122,3 +122,17 @@ class DraftResponse(BaseModel):
 class DraftOutput(BaseModel):
     title: str = Field(description="Compelling blog post title, max 100 characters")
     content: str = Field(description="Full blog post body in plain prose")
+
+
+class QAMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=2000)
+
+
+class PostQuestionRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    chat_history: list[QAMessage] = Field(default_factory=list, max_length=10)
+
+
+class PostQuestionResponse(BaseModel):
+    answer: str

@@ -199,3 +199,16 @@ def mock_draft_llm(request):
     with patch("agents.draft_agent._get_outline_llm", return_value=mock_outline_llm), \
          patch("agents.draft_agent._get_draft_llm", return_value=mock_draft_llm_obj):
         yield
+
+
+@pytest.fixture(autouse=True)
+def mock_qa_llm(request):
+    if "no_mock_llm" in request.keywords:
+        yield
+        return
+
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke = AsyncMock(return_value=SimpleNamespace(content="Mock answer."))
+
+    with patch("agents.qa_agent._get_qa_llm", return_value=mock_llm):
+        yield

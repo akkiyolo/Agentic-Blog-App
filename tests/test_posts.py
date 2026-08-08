@@ -244,3 +244,69 @@ async def test_retag_not_found(client: AsyncClient):
     assert response.status_code == 404
 
 
+@pytest.mark.anyio
+async def test_ask_post_question_success(client: AsyncClient):
+    await create_test_user(client)
+    token = await login_user(client)
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Test Post", "content": "Some content"},
+        headers=auth_header(token),
+    )
+    post_id = response.json()["id"]
+
+    response = await client.post(
+        f"/api/posts/{post_id}/ask",
+        json={"question": "What is this post about?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Mock answer."
+
+
+@pytest.mark.anyio
+async def test_ask_post_question_not_found(client: AsyncClient):
+    response = await client.post(
+        "/api/posts/999/ask",
+        json={"question": "What is this about?"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_ask_post_question_no_auth_needed(client: AsyncClient):
+    # explicitly no Authorization header — should still work
+    await create_test_user(client)
+    token = await login_user(client)
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Public Post", "content": "Content"},
+        headers=auth_header(token),
+    )
+    post_id = response.json()["id"]
+
+    response = await client.post(f"/api/posts/{post_id}/ask", json={"question": "Anything?"})
+    assert response.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_ask_post_question_rate_limited(client: AsyncClient):
+    import rate_limit
+    rate_limit._requests.clear()
+
+    await create_test_user(client)
+    token = await login_user(client)
+    response = await client.post(
+        "/api/posts",
+        json={"title": "Rate Limit Post", "content": "Content"},
+        headers=auth_header(token),
+    )
+    post_id = response.json()["id"]
+
+    for _ in range(10):
+        r = await client.post(f"/api/posts/{post_id}/ask", json={"question": "What is this?"})
+        assert r.status_code == 200
+
+    r = await client.post(f"/api/posts/{post_id}/ask", json={"question": "What is this?"})
+    assert r.status_code == 429
+

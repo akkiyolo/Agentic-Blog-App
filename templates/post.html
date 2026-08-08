@@ -32,6 +32,14 @@
                 </div>
 
                 <p class="article-content">{{ post.content }}</p>
+                <div id="qaWidget" class="content-section py-3 px-4 mt-4">
+                    <h5>Ask this post a question</h5>
+                    <div id="qaMessages" class="mb-3"></div>
+                    <form id="qaForm" class="d-flex gap-2">
+                        <input type="text" class="form-control" id="qaInput" maxlength="500" placeholder="Ask something about this post..." required>
+                        <button type="submit" class="btn btn-primary" id="qaSubmitBtn">Ask</button>
+                    </form>
+                </div>
                 <div id="postActions" class="post-actions mt-3 pt-3 border-top d-none">
                     <button type="button"
                             class="btn btn-outline-secondary me-1"
@@ -280,5 +288,56 @@
     });
 
     checkOwnership();
+    </script>
+
+    <script type="module">
+    import { escapeHtml } from '/static/js/utils.js';
+    const postId={{post.id}}
+    const qaHistory = [];
+
+    function appendMessage(role, content) {
+        const el = document.createElement('div');
+        el.className = role === 'user' ? 'text-end mb-2' : 'mb-2';
+        const label = role === 'user' ? 'You' : 'Answer';
+        el.innerHTML = `<strong>${label}:</strong> ${escapeHtml(content)}`;
+        document.getElementById('qaMessages').appendChild(el);
+    }
+
+    document.getElementById('qaForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('qaInput');
+        const question = input.value.trim();
+        if (!question) return;
+
+        appendMessage('user', question);
+        input.value = '';
+        document.getElementById('qaSubmitBtn').disabled = true;
+
+        try {
+            const response = await fetch(`/api/posts/${postId}/ask`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question, chat_history: qaHistory }),
+            });
+
+            if (response.status === 429) {
+                appendMessage('assistant', "You've asked a lot of questions — please wait a few minutes.");
+                return;
+            }
+            if (!response.ok) {
+                appendMessage('assistant', 'Something went wrong. Please try again.');
+                return;
+            }
+
+            const data = await response.json();
+            appendMessage('assistant', data.answer);
+            qaHistory.push({ role: 'user', content: question });
+            qaHistory.push({ role: 'assistant', content: data.answer });
+        } catch (error) {
+            appendMessage('assistant', 'Network error. Please try again.');
+        } finally {
+            document.getElementById('qaSubmitBtn').disabled = false;
+        }
+    });
     </script>
 {% endblock scripts %}

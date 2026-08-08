@@ -1,17 +1,19 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query,Request
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 import models
 from database import get_db, AsyncSessionLocal
-from schemas import PostCreate, PostResponse, PostUpdate, PaginatedPostsResponse
+from schemas import PostCreate, PostResponse, PostUpdate, PaginatedPostsResponse,PostQuestionRequest, PostQuestionResponse
 
 from auth import CurrentUser
 from agents.tagging_agent import generate_post_metadata
+from agents.qa_agent import answer_question
+from rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +230,27 @@ async def retag_post(
     background_tasks.add_task(run_tagging, post.id, post.title, post.content)
 
     return post
+
+
+@router.post("/{post_id}/ask", response_model=PostQuestionResponse)
+async def ask_post_question(
+    post_id: int,
+    request: PostQuestionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _rate_limit: Annotated[None, Depends(check_rate_limit)],
+):
+    result = await db.execute(select(models.Post).where(models.Post.id == post_id))
+    post = result.scalars().first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    answer = await answer_question(
+        post_title=post.title,
+        post_content=post.content,
+        question=request.question,
+        chat_history=request.chat_history,
+    )
+    return PostQuestionResponse(answer=answer)
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
