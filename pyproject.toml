@@ -12,12 +12,14 @@ dependencies = [
     "fastapi[standard]>=0.128.0",
     "greenlet>=3.5.3",
     "langchain-google-genai>=4.3.2",
+    "langgraph>=1.0.0",
     "pillow>=12.3.0",
     "psycopg[binary]>=3.3.4",
     "pwdlib[argon2]>=0.3.0",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
     "sqlalchemy>=2.0.51",
+    "tavily-python>=0.7.0",
 ]
 
 [dependency-groups]
